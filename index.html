@@ -757,9 +757,10 @@ async function getResponse(message) {
                 }, 1200);
                 
             } catch (error) {
+                console.error('Message error:', error);
                 setTimeout(() => {
                     hideTyping();
-                    addMessage("Sorry, I'm having trouble accessing maritime data right now. Please try again in a moment.", false);
+                    addMessage("Error: " + error.message, false);
                 }, 1000);
             }
         }
