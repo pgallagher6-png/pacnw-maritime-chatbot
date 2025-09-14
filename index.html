@@ -305,8 +305,8 @@
                             Live NOAA weather, sea state, visibility, and forecasts
                         </div>
                         <div class="data-card">
-                            <h5>⛴️ Ferry Routes</h5>
-                            5 major routes with smart AI detection
+                            <h5>⛴️ Ferry Operations</h5>
+                            Live WSF schedules, delays, and vehicle wait times
                         </div>
                         <div class="data-card">
                             <h5>⚓ Port Services</h5>
@@ -321,7 +321,7 @@
             <h4>Live Maritime Data</h4>
             <div class="action-buttons">
                 <button class="action-btn" onclick="sendQuickMessage('Current weather conditions Puget Sound')">🌤️ Weather</button>
-                <button class="action-btn" onclick="sendQuickMessage('Whidbey Island ferry')">⛴️ Ferries</button>
+                <button class="action-btn" onclick="sendQuickMessage('Ferry schedule Seattle Bainbridge Island')">⛴️ Ferries</button>
                 <button class="action-btn" onclick="sendQuickMessage('Port of Seattle terminal status today')">🏭 Ports</button>
                 <button class="action-btn" onclick="sendQuickMessage('Vessel traffic Elliott Bay current')">🚢 Traffic</button>
                 <button class="action-btn" onclick="sendQuickMessage('Tide chart Seattle today')">🌊 Tides</button>
@@ -331,7 +331,7 @@
 
         <div class="input-area">
             <div class="input-container">
-                <input type="text" class="message-input" id="messageInput" placeholder="Try: 'Edmonds to Kingston ferry' or 'San Juan Islands schedule'">
+                <input type="text" class="message-input" id="messageInput" placeholder="Ask about conditions, schedules, ports, or navigation...">
                 <button class="send-btn" onclick="sendMessage()">
                     <span>➤</span>
                 </button>
@@ -343,7 +343,7 @@
         </div>
         
         <div class="footer-info">
-            Pacific Northwest Maritime Intelligence • v3.0 • Multi-Route Ferry System
+            Pacific Northwest Maritime Intelligence • v2.0 • Live NOAA + WSF Data
         </div>
     </div>
 
@@ -447,106 +447,303 @@
             }
         }
 
-        // Multi-route ferry data function
-        async function fetchFerryData(userMessage = '') {
-            try {
-                const routeQuery = detectRoute(userMessage);
-                
-                console.log('Calling ferry API with route:', routeQuery);
-                
-                const response = await fetch(`/api/ferries?route=${routeQuery}`);
-                
-                if (!response.ok) {
-                    throw new Error('Ferry API failed');
+// Update your chatbot's fetchFerryData function with this:
+
+async function fetchFerryData(userMessage = '') {
+    try {
+        // Extract route information from user message
+        const routeQuery = extractRouteFromMessage(userMessage);
+        
+        const response = await fetch(`/api/ferries?route=${routeQuery}`);
+        
+        if (!response.ok) {
+            throw new Error('Ferry service unavailable');
+        }
+        
+        const ferryData = await response.json();
+        console.log('Ferry data received:', ferryData);
+        
+        // Handle different route types
+        return formatFerryResponse(ferryData);
+        
+    } catch (error) {
+        console.error('Ferry fetch error:', error);
+        
+        return {
+            text: 'Pacific Northwest Ferry Information:',
+            data: {
+                'Available Routes': 'Seattle-Bainbridge, Edmonds-Kingston, Mukilteo-Clinton',
+                'Status': 'Service information available',
+                'Tip': 'Try: "Edmonds to Kingston ferry" or "Bainbridge Island ferry"',
+                'Note': 'Live integration in progress'
+            }
+        };
+    }
+}
+
+function extractRouteFromMessage(message) {
+    const msg = message.toLowerCase();
+    
+    // Route detection patterns
+    if (msg.includes('edmonds') || msg.includes('kingston')) {
+        return 'edmonds-kingston';
+    }
+    if (msg.includes('mukilteo') || msg.includes('clinton') || msg.includes('whidbey')) {
+        return 'mukilteo-clinton';
+    }
+    if (msg.includes('bremerton') && msg.includes('seattle')) {
+        return 'seattle-bremerton';
+    }
+    if (msg.includes('san juan') || msg.includes('anacortes') || msg.includes('islands') || msg.includes('friday harbor')) {
+        return 'anacortes-san-juan';
+    }
+    if (msg.includes('bainbridge') || msg.includes('seattle')) {
+        return 'seattle-bainbridge';
+    }
+    
+    // Default to Seattle-Bainbridge
+    return 'seattle-bainbridge';
+}
+
+function formatFerryResponse(ferryData) {
+    const nextDep = ferryData.vessels?.nextDepartures?.[0];
+    const secondDep = ferryData.vessels?.nextDepartures?.[1];
+    const thirdDep = ferryData.vessels?.nextDepartures?.[2];
+    
+    const responseData = {
+        'Route': ferryData.shortName || ferryData.route,
+        'Service Status': ferryData.service?.status || 'Normal Operations'
+    };
+    
+    // Add departure information
+    if (nextDep) {
+        responseData['Next Departure'] = nextDep.waitTime ? 
+            `${nextDep.time} - M/V ${nextDep.vessel} (${nextDep.waitTime} min wait)` :
+            `${nextDep.time} - M/V ${nextDep.vessel}`;
+    }
+    
+    if (secondDep) {
+        responseData['Following'] = `${secondDep.time} - M/V ${secondDep.vessel}`;
+    }
+    
+    if (thirdDep) {
+        responseData['Third Departure'] = `${thirdDep.time} - M/V ${thirdDep.vessel}`;
+    }
+    
+    // Add route-specific information
+    responseData['Crossing Time'] = ferryData.service?.crossingTime || '35 minutes';
+    responseData['Frequency'] = ferryData.service?.frequency || 'Every 35-50 minutes';
+    
+    if (ferryData.service?.reservations && ferryData.service.reservations !== 'Walk-up service available') {
+        responseData['⚠️ Reservations'] = ferryData.service.reservations;
+    }
+    
+    if (ferryData.terminals?.departure?.name) {
+        responseData['From'] = ferryData.terminals.departure.name;
+    }
+    
+    if (ferryData.terminals?.arrival?.name) {
+        responseData['To'] = ferryData.terminals.arrival.name;
+    }
+    
+    // Add current alerts
+    if (ferryData.alerts && ferryData.alerts.length > 0) {
+        responseData['Current Alerts'] = ferryData.alerts[0];
+    }
+    
+    responseData['Last Updated'] = new Date(ferryData.timestamp).toLocaleTimeString();
+    
+    return {
+        text: `⛴️ ${ferryData.route || 'Ferry'} Status:`,
+        data: responseData
+    };
+}
+
+// Also update your getResponse function to better handle ferry queries:
+async function getResponse(message) {
+    const lowerMessage = message.toLowerCase();
+    
+    // Real weather data
+    if (lowerMessage.includes('weather') || lowerMessage.includes('conditions') || lowerMessage.includes('wind')) {
+        return await fetchRealWeather();
+    }
+    
+    // Enhanced ferry detection - now supports multiple routes
+    if (lowerMessage.includes('ferry') || lowerMessage.includes('ferries') ||
+        lowerMessage.includes('bainbridge') || lowerMessage.includes('edmonds') || 
+        lowerMessage.includes('kingston') || lowerMessage.includes('mukilteo') ||
+        lowerMessage.includes('clinton') || lowerMessage.includes('whidbey') ||
+        lowerMessage.includes('bremerton') || lowerMessage.includes('san juan') ||
+        lowerMessage.includes('anacortes') || lowerMessage.includes('schedule')) {
+        return await fetchFerryData(message);
+    }
+    
+    // Static responses for other data
+    if (lowerMessage.includes('port') || lowerMessage.includes('terminal') || 
+        (lowerMessage.includes('seattle') && !lowerMessage.includes('ferry'))) {
+        return staticResponses.port;
+    } else if (lowerMessage.includes('traffic') || lowerMessage.includes('vessel') || lowerMessage.includes('ship')) {
+        return staticResponses.traffic;
+    } else if (lowerMessage.includes('tide') || lowerMessage.includes('current') || lowerMessage.includes('water level')) {
+        return staticResponses.tide;
+    } else if (lowerMessage.includes('warning') || lowerMessage.includes('navigation') || lowerMessage.includes('notice')) {
+        return staticResponses.warning;
+    } else {
+        return {
+            text: "I provide real-time maritime information for the Pacific Northwest. I can help with:",
+            data: {
+                '🌤️ Marine Weather': '⚡ Live NOAA conditions, wind, visibility, forecasts',
+                '⛴️ Ferry Routes': '⚡ Seattle-Bainbridge, Edmonds-Kingston, Mukilteo-Clinton, Seattle-Bremerton, San Juan Islands',
+                '🏭 Port Operations': 'Terminal status, vessel schedules, congestion',
+                '🚢 Vessel Traffic': 'Ship movements, anchorages, channel status',
+                '🌊 Tides & Currents': 'Tide tables, current predictions, water levels',
+                '⚠️ Marine Notices': 'Navigation warnings, restrictions, safety alerts',
+                '💡 Try asking': '"Edmonds to Kingston ferry" or "San Juan Islands schedule"'
+            }
+        };
+    }
+}
+
+        function addMessage(content, isUser = false, hasData = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+            
+            let messageContent = `<div class="message-content">${content}`;
+            
+            if (hasData && typeof content === 'object') {
+                messageContent = `<div class="message-content">${content.text}`;
+                for (const [key, value] of Object.entries(content.data)) {
+                    messageContent += `<div class="data-card"><h5>${key}</h5>${value}</div>`;
                 }
-                
-                const ferryData = await response.json();
-                console.log('Ferry API response:', ferryData);
-                
-                return formatFerryResponse(ferryData);
-                
-            } catch (error) {
-                console.error('Ferry fetch error:', error);
-                
+            }
+            
+            messageContent += '</div>';
+            messageDiv.innerHTML = messageContent;
+            chatArea.appendChild(messageDiv);
+            
+            setTimeout(() => {
+                chatArea.scrollTop = chatArea.scrollHeight;
+            }, 100);
+        }
+
+        function showTyping() {
+            typingIndicator.style.display = 'block';
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        function hideTyping() {
+            typingIndicator.style.display = 'none';
+        }
+
+        async function getResponse(message) {
+            const lowerMessage = message.toLowerCase();
+            
+            // Real weather data
+            if (lowerMessage.includes('weather') || lowerMessage.includes('conditions') || lowerMessage.includes('wind')) {
+                return await fetchRealWeather();
+            }
+            
+            // Real ferry data
+            if (lowerMessage.includes('ferry') || lowerMessage.includes('bainbridge') || lowerMessage.includes('schedule')) {
+                return await fetchRealFerryData();
+            }
+            
+            // Static responses for other data
+            if (lowerMessage.includes('port') || lowerMessage.includes('terminal') || lowerMessage.includes('seattle') || lowerMessage.includes('tacoma')) {
+                return staticResponses.port;
+            } else if (lowerMessage.includes('traffic') || lowerMessage.includes('vessel') || lowerMessage.includes('ship')) {
+                return staticResponses.traffic;
+            } else if (lowerMessage.includes('tide') || lowerMessage.includes('current') || lowerMessage.includes('water level')) {
+                return staticResponses.tide;
+            } else if (lowerMessage.includes('warning') || lowerMessage.includes('navigation') || lowerMessage.includes('notice')) {
+                return staticResponses.warning;
+            } else {
                 return {
-                    text: 'Pacific Northwest Ferry Routes:',
+                    text: "I provide real-time maritime information for the Pacific Northwest. I can help with:",
                     data: {
-                        'Status': 'Ferry data temporarily unavailable',
-                        'Available Routes': 'Seattle-Bainbridge, Edmonds-Kingston, Mukilteo-Clinton, Seattle-Bremerton, San Juan Islands',
-                        'Tip': 'Try: "Edmonds to Kingston ferry" or "Whidbey Island ferry"',
-                        'Backup': 'Check wsdot.wa.gov/ferries for live schedules'
+                        '🌤️ Marine Weather': '⚡ Live NOAA conditions, wind, visibility, forecasts',
+                        '⛴️ Ferry Services': '⚡ Live WSF schedules, delays, vehicle wait times',
+                        '🏭 Port Operations': 'Terminal status, vessel schedules, congestion',
+                        '🚢 Vessel Traffic': 'Ship movements, anchorages, channel status',
+                        '🌊 Tides & Currents': 'Tide tables, current predictions, water levels',
+                        '⚠️ Marine Notices': 'Navigation warnings, restrictions, safety alerts'
                     }
                 };
             }
         }
 
-        function detectRoute(message) {
-            const msg = message.toLowerCase();
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+
+            addMessage(message, true);
+            messageInput.value = '';
+
+            showTyping();
             
-            if (msg.includes('mukilteo') || msg.includes('clinton') || msg.includes('whidbey')) {
-                return 'mukilteo-clinton';
+            try {
+                const response = await getResponse(message);
+                
+                setTimeout(() => {
+                    hideTyping();
+                    addMessage(response, false, true);
+                }, 1200);
+                
+            } catch (error) {
+                setTimeout(() => {
+                    hideTyping();
+                    addMessage("Sorry, I'm having trouble accessing maritime data right now. Please try again in a moment.", false);
+                }, 1000);
             }
-            if (msg.includes('edmonds') || msg.includes('kingston')) {
-                return 'edmonds-kingston';
-            }
-            if (msg.includes('bremerton')) {
-                return 'seattle-bremerton';
-            }
-            if (msg.includes('anacortes') || msg.includes('san juan') || msg.includes('islands')) {
-                return 'anacortes-san-juan';
-            }
-            
-            return 'seattle-bainbridge';
         }
 
-        function formatFerryResponse(ferryData) {
-            const departures = ferryData.vessels?.nextDepartures || [];
+        async function sendQuickMessage(message) {
+            addMessage(message, true);
             
-            const responseData = {
-                'Route': ferryData.shortName || ferryData.route,
-                'Service Status': ferryData.service?.status || 'Unknown'
-            };
+            showTyping();
             
-            if (departures.length > 0 && departures[0].time !== 'See WSDOT schedule') {
-                const next = departures[0];
-                if (next.waitTime) {
-                    responseData['Next Departure'] = `${next.time} - M/V ${next.vessel} (${next.waitTime} min wait)`;
-                } else {
-                    responseData['Next Departure'] = `${next.time} - M/V ${next.vessel}`;
-                }
+            try {
+                const response = await getResponse(message);
                 
-                if (departures[1]) {
-                    const second = departures[1];
-                    if (second.waitTime) {
-                        responseData['Following'] = `${second.time} - M/V ${second.vessel} (${second.waitTime} min wait)`;
-                    } else {
-                        responseData['Following'] = `${second.time} - M/V ${second.vessel}`;
-                    }
-                }
+                setTimeout(() => {
+                    hideTyping();
+                    addMessage(response, false, true);
+                }, 1000);
                 
-                if (departures[2]) {
-                    const third = departures[2];
-                    responseData['Third'] = `${third.time} - M/V ${third.vessel}`;
-                }
-            } else {
-                responseData['Schedule'] = 'Check WSDOT website for current departures';
+            } catch (error) {
+                setTimeout(() => {
+                    hideTyping();
+                    addMessage("Maritime data temporarily unavailable. Please try again.", false);
+                }, 800);
             }
-            
-            responseData['Crossing Time'] = ferryData.service?.crossingTime || 'Unknown';
-            responseData['Frequency'] = ferryData.service?.frequency || 'Variable';
-            
-            if (ferryData.service?.reservations && ferryData.service.reservations.includes('Required')) {
-                responseData['⚠️ Reservations'] = ferryData.service.reservations;
-            }
-            
-            responseData['Last Updated'] = new Date(ferryData.timestamp).toLocaleTimeString();
-            
-            return {
-                text: `⛴️ ${ferryData.route} Status:`,
-                data: responseData
-            };
         }
 
-        function addMessage(content, isUser = false, hasData = false) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+        // Event listeners
+        messageInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        window.addEventListener('load', function() {
+            messageInput.focus();
+        });
+
+        // Welcome sequence
+        setTimeout(() => {
+            addMessage("💡 Now featuring LIVE NOAA weather + WSF ferry data! Try the weather or ferry buttons to see real-time Pacific Northwest maritime intelligence.", false);
+        }, 3000);
+
+        // Prevent zoom on double tap (mobile)
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (event) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+    </script>
+</body>
+</html>
