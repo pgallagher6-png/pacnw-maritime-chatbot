@@ -302,7 +302,7 @@
                         </div>
                         <div class="data-card">
                             <h5>🌊 Marine Conditions</h5>
-                            Weather, sea state, visibility, and marine forecasts
+                            Live NOAA weather, sea state, visibility, and forecasts
                         </div>
                         <div class="data-card">
                             <h5>⚓ Port Services</h5>
@@ -339,11 +339,11 @@
         </div>
 
         <div class="typing-indicator" id="typingIndicator">
-            Maritime Assistant is analyzing conditions...
+            Maritime Assistant is analyzing live conditions...
         </div>
         
         <div class="footer-info">
-            Pacific Northwest Maritime Intelligence • v1.0
+            Pacific Northwest Maritime Intelligence • v1.0 • Live NOAA Data
         </div>
     </div>
 
@@ -352,20 +352,8 @@
         const messageInput = document.getElementById('messageInput');
         const typingIndicator = document.getElementById('typingIndicator');
 
-        // Static responses (working version)
-        const responses = {
-            'weather': {
-                'text': 'Current marine conditions for Puget Sound:',
-                'data': {
-                    'Wind': 'NW 12-15 knots, gusting to 20',
-                    'Visibility': '10+ nautical miles',
-                    'Sea State': 'Choppy, 2-3 foot waves',
-                    'Temperature': 'Air 52°F (11°C), Water 48°F',
-                    'Barometer': '30.15" and rising',
-                    'Small Craft Advisory': 'None active',
-                    'Forecast': 'Seas decreasing to 1-2 ft by evening'
-                }
-            },
+        // Static responses for non-weather data
+        const staticResponses = {
             'ferry': {
                 'text': 'Seattle - Bainbridge Island Ferry Status:',
                 'data': {
@@ -428,6 +416,52 @@
             }
         };
 
+        // Fetch real weather data from NOAA
+        async function fetchRealWeather() {
+            try {
+                const response = await fetch('/api/weather');
+                
+                if (!response.ok) {
+                    throw new Error('Weather service unavailable');
+                }
+                
+                const weatherData = await response.json();
+                
+                return {
+                    text: `⚡ LIVE marine conditions for ${weatherData.location}:`,
+                    data: {
+                        'Wind': weatherData.conditions.wind,
+                        'Temperature': weatherData.conditions.temperature,
+                        'Visibility': weatherData.conditions.visibility,
+                        'Humidity': weatherData.conditions.humidity,
+                        'Barometric Pressure': weatherData.conditions.pressure,
+                        'Sea State': weatherData.maritime.seaState,
+                        'Small Craft Advisory': weatherData.maritime.smallCraftAdvisory ? 'Active ⚠️' : 'None',
+                        'Conditions': weatherData.maritime.conditions,
+                        'Forecast': weatherData.conditions.forecast,
+                        'Last Updated': new Date(weatherData.timestamp).toLocaleTimeString()
+                    }
+                };
+                
+            } catch (error) {
+                console.error('Weather fetch error:', error);
+                
+                // Fallback to static data if API fails
+                return {
+                    text: 'Marine conditions for Puget Sound (cached):',
+                    data: {
+                        'Status': 'Live weather temporarily unavailable',
+                        'Wind': 'NW 12-15 knots (estimated)',
+                        'Visibility': '10+ nautical miles',
+                        'Sea State': 'Moderate (2-3 ft waves)',
+                        'Conditions': 'Use caution - verify conditions',
+                        'Note': 'Check VHF weather radio for updates',
+                        'Fallback': 'Real-time data will resume shortly'
+                    }
+                };
+            }
+        }
+
         function addMessage(content, isUser = false, hasData = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
@@ -459,26 +493,30 @@
             typingIndicator.style.display = 'none';
         }
 
-        function getResponse(message) {
+        async function getResponse(message) {
             const lowerMessage = message.toLowerCase();
             
+            // Check if requesting weather data - USE REAL NOAA DATA
             if (lowerMessage.includes('weather') || lowerMessage.includes('conditions') || lowerMessage.includes('wind')) {
-                return responses.weather;
-            } else if (lowerMessage.includes('ferry') || lowerMessage.includes('bainbridge') || lowerMessage.includes('schedule')) {
-                return responses.ferry;
+                return await fetchRealWeather();
+            }
+            
+            // Use static responses for other data types
+            if (lowerMessage.includes('ferry') || lowerMessage.includes('bainbridge') || lowerMessage.includes('schedule')) {
+                return staticResponses.ferry;
             } else if (lowerMessage.includes('port') || lowerMessage.includes('terminal') || lowerMessage.includes('seattle') || lowerMessage.includes('tacoma')) {
-                return responses.port;
+                return staticResponses.port;
             } else if (lowerMessage.includes('traffic') || lowerMessage.includes('vessel') || lowerMessage.includes('ship')) {
-                return responses.traffic;
+                return staticResponses.traffic;
             } else if (lowerMessage.includes('tide') || lowerMessage.includes('current') || lowerMessage.includes('water level')) {
-                return responses.tide;
+                return staticResponses.tide;
             } else if (lowerMessage.includes('warning') || lowerMessage.includes('navigation') || lowerMessage.includes('notice')) {
-                return responses.warning;
+                return staticResponses.warning;
             } else {
                 return {
-                    text: "I provide maritime information for the Pacific Northwest. I can help with:",
+                    text: "I provide real-time maritime information for the Pacific Northwest. I can help with:",
                     data: {
-                        '🌤️ Marine Weather': 'Wind, visibility, sea conditions, forecasts',
+                        '🌤️ Marine Weather': '⚡ Live NOAA conditions, wind, visibility, forecasts',
                         '⛴️ Ferry Services': 'WSF schedules, delays, capacity information',
                         '🏭 Port Operations': 'Terminal status, vessel schedules, congestion',
                         '🚢 Vessel Traffic': 'Ship movements, anchorages, channel status',
@@ -489,7 +527,7 @@
             }
         }
 
-        function sendMessage() {
+        async function sendMessage() {
             const message = messageInput.value.trim();
             if (!message) return;
 
@@ -498,23 +536,41 @@
 
             showTyping();
             
-            setTimeout(() => {
-                hideTyping();
-                const response = getResponse(message);
-                addMessage(response, false, true);
-            }, 1200);
+            try {
+                const response = await getResponse(message);
+                
+                setTimeout(() => {
+                    hideTyping();
+                    addMessage(response, false, true);
+                }, 1200);
+                
+            } catch (error) {
+                setTimeout(() => {
+                    hideTyping();
+                    addMessage("Sorry, I'm having trouble accessing maritime data right now. Please try again in a moment.", false);
+                }, 1000);
+            }
         }
 
-        function sendQuickMessage(message) {
+        async function sendQuickMessage(message) {
             addMessage(message, true);
             
             showTyping();
             
-            setTimeout(() => {
-                hideTyping();
-                const response = getResponse(message);
-                addMessage(response, false, true);
-            }, 1000);
+            try {
+                const response = await getResponse(message);
+                
+                setTimeout(() => {
+                    hideTyping();
+                    addMessage(response, false, true);
+                }, 1000);
+                
+            } catch (error) {
+                setTimeout(() => {
+                    hideTyping();
+                    addMessage("Maritime data temporarily unavailable. Please try again.", false);
+                }, 800);
+            }
         }
 
         // Event listeners
@@ -531,8 +587,18 @@
 
         // Welcome sequence
         setTimeout(() => {
-            addMessage("💡 Pro tip: Try the quick action buttons below or ask me about maritime conditions, ferry schedules, or port operations!", false);
+            addMessage("💡 Now featuring LIVE NOAA weather data! Try the weather button to see real maritime conditions for Puget Sound.", false);
         }, 3000);
+
+        // Prevent zoom on double tap (mobile)
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (event) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
     </script>
 </body>
 </html>
