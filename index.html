@@ -712,7 +712,7 @@ async function getResponse(message) {
             
             // Real ferry data
             if (lowerMessage.includes('ferry') || lowerMessage.includes('bainbridge') || lowerMessage.includes('schedule')) {
-                return await fetchRealFerryData();
+                return await getResponse(message);
             }
             
             // Static responses for other data
