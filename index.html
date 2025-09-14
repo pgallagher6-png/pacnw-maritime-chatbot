@@ -451,31 +451,71 @@
 
 async function fetchFerryData(userMessage = '') {
     try {
-        // Extract route information from user message
-        const routeQuery = extractRouteFromMessage(userMessage);
+        // Route detection
+        const msg = userMessage.toLowerCase();
+        let routeQuery = 'seattle-bainbridge';
+        
+        if (msg.includes('whidbey') || msg.includes('mukilteo') || msg.includes('clinton')) {
+            routeQuery = 'mukilteo-clinton';
+        } else if (msg.includes('edmonds') || msg.includes('kingston')) {
+            routeQuery = 'edmonds-kingston';
+        } else if (msg.includes('bremerton')) {
+            routeQuery = 'seattle-bremerton';
+        } else if (msg.includes('san juan') || msg.includes('anacortes')) {
+            routeQuery = 'anacortes-san-juan';
+        }
+        
+        console.log('Calling ferry API with route:', routeQuery);
         
         const response = await fetch(`/api/ferries?route=${routeQuery}`);
         
         if (!response.ok) {
-            throw new Error('Ferry service unavailable');
+            throw new Error('Ferry API failed');
         }
         
         const ferryData = await response.json();
         console.log('Ferry data received:', ferryData);
         
-        // Handle different route types
-        return formatFerryResponse(ferryData);
+        // Format response
+        const departures = ferryData.vessels?.nextDepartures || [];
+        const responseData = {
+            'Route': ferryData.shortName || ferryData.route,
+            'Service Status': ferryData.service?.status || 'Unknown'
+        };
         
-    } catch (error) {
-        console.error('Ferry fetch error:', error);
+        if (departures.length > 0 && departures[0].time !== 'See WSDOT schedule') {
+            const next = departures[0];
+            if (next.waitTime) {
+                responseData['Next Departure'] = `${next.time} - M/V ${next.vessel} (${next.waitTime} min wait)`;
+            } else {
+                responseData['Next Departure'] = `${next.time} - M/V ${next.vessel}`;
+            }
+            
+            if (departures[1]) {
+                responseData['Following'] = `${departures[1].time} - M/V ${departures[1].vessel}`;
+            }
+        } else {
+            responseData['Schedule'] = 'Check WSDOT website';
+        }
+        
+        responseData['Crossing Time'] = ferryData.service?.crossingTime || 'Unknown';
+        responseData['Frequency'] = ferryData.service?.frequency || 'Variable';
+        responseData['Last Updated'] = new Date().toLocaleTimeString();
         
         return {
-            text: 'Pacific Northwest Ferry Information:',
+            text: `⛴️ ${ferryData.route || 'Ferry'} Status:`,
+            data: responseData
+        };
+        
+    } catch (error) {
+        console.error('Ferry error:', error);
+        
+        return {
+            text: 'Pacific Northwest Ferry Routes:',
             data: {
-                'Available Routes': 'Seattle-Bainbridge, Edmonds-Kingston, Mukilteo-Clinton',
-                'Status': 'Service information available',
-                'Tip': 'Try: "Edmonds to Kingston ferry" or "Bainbridge Island ferry"',
-                'Note': 'Live integration in progress'
+                'Available': 'Seattle-Bainbridge, Edmonds-Kingston, Mukilteo-Clinton',
+                'Try': '"Whidbey Island ferry" or "Edmonds to Kingston"',
+                'Status': 'Multi-route system active'
             }
         };
     }
