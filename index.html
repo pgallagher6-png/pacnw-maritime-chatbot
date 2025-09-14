@@ -608,19 +608,50 @@ async function getResponse(message) {
         return await fetchRealWeather();
     }
     
-    // Enhanced ferry detection - now supports multiple routes
+    // Ferry data - simplified detection
     if (lowerMessage.includes('ferry') || lowerMessage.includes('ferries') ||
         lowerMessage.includes('bainbridge') || lowerMessage.includes('edmonds') || 
         lowerMessage.includes('kingston') || lowerMessage.includes('mukilteo') ||
         lowerMessage.includes('clinton') || lowerMessage.includes('whidbey') ||
         lowerMessage.includes('bremerton') || lowerMessage.includes('san juan') ||
         lowerMessage.includes('anacortes') || lowerMessage.includes('schedule')) {
-        return await fetchFerryData(message);
+        
+        // Direct API call
+        try {
+            const msg = message.toLowerCase();
+            let routeQuery = 'seattle-bainbridge';
+            
+            if (msg.includes('whidbey') || msg.includes('mukilteo')) {
+                routeQuery = 'mukilteo-clinton';
+            } else if (msg.includes('edmonds') || msg.includes('kingston')) {
+                routeQuery = 'edmonds-kingston';
+            }
+            
+            const response = await fetch(`/api/ferries?route=${routeQuery}`);
+            const ferryData = await response.json();
+            
+            return {
+                text: `⛴️ ${ferryData.shortName} Status:`,
+                data: {
+                    'Route': ferryData.shortName,
+                    'Next Departure': ferryData.vessels?.nextDepartures?.[0] ? 
+                        `${ferryData.vessels.nextDepartures[0].time} - M/V ${ferryData.vessels.nextDepartures[0].vessel}` : 
+                        'Check schedule',
+                    'Crossing Time': ferryData.service?.crossingTime,
+                    'Frequency': ferryData.service?.frequency,
+                    'Last Updated': new Date().toLocaleTimeString()
+                }
+            };
+        } catch (error) {
+            return {
+                text: 'Ferry Status:',
+                data: {'Error': 'API connection issue - check console'}
+            };
+        }
     }
     
     // Static responses for other data
-    if (lowerMessage.includes('port') || lowerMessage.includes('terminal') || 
-        (lowerMessage.includes('seattle') && !lowerMessage.includes('ferry'))) {
+    if (lowerMessage.includes('port') || lowerMessage.includes('terminal')) {
         return staticResponses.port;
     } else if (lowerMessage.includes('traffic') || lowerMessage.includes('vessel') || lowerMessage.includes('ship')) {
         return staticResponses.traffic;
@@ -630,15 +661,11 @@ async function getResponse(message) {
         return staticResponses.warning;
     } else {
         return {
-            text: "I provide real-time maritime information for the Pacific Northwest. I can help with:",
+            text: "I provide real-time maritime information for the Pacific Northwest:",
             data: {
-                '🌤️ Marine Weather': '⚡ Live NOAA conditions, wind, visibility, forecasts',
-                '⛴️ Ferry Routes': '⚡ Seattle-Bainbridge, Edmonds-Kingston, Mukilteo-Clinton, Seattle-Bremerton, San Juan Islands',
-                '🏭 Port Operations': 'Terminal status, vessel schedules, congestion',
-                '🚢 Vessel Traffic': 'Ship movements, anchorages, channel status',
-                '🌊 Tides & Currents': 'Tide tables, current predictions, water levels',
-                '⚠️ Marine Notices': 'Navigation warnings, restrictions, safety alerts',
-                '💡 Try asking': '"Edmonds to Kingston ferry" or "San Juan Islands schedule"'
+                '🌤️ Marine Weather': '⚡ Live NOAA conditions',
+                '⛴️ Ferry Routes': '⚡ Try "Whidbey Island ferry" or "Edmonds Kingston"',
+                'Available': 'Seattle-Bainbridge, Edmonds-Kingston, Mukilteo-Clinton'
             }
         };
     }
