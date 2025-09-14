@@ -450,7 +450,7 @@
         // Fetch real ferry data from WSF
         async function fetchRealFerryData() {
             try {
-                const response = await fetch('/api/ferries?route=seattle-bainbridge');
+                const response = await fetch('/api/ferries?direction=seattle-to-bainbridge');
                 
                 if (!response.ok) {
                     throw new Error('Ferry service unavailable');
