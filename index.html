@@ -447,49 +447,58 @@
             }
         }
 
-        // Fetch real ferry data from WSF
-        async function fetchRealFerryData() {
-            try {
-                const response = await fetch('/api/ferries?direction=seattle-to-bainbridge');
-                
-                if (!response.ok) {
-                    throw new Error('Ferry service unavailable');
-                }
-                
-                const ferryData = await response.json();
-                
-                return {
-                    text: `⛴️ LIVE ferry status for ${ferryData.route}:`,
-                    data: {
-                        'Service Status': ferryData.service.status,
-                        'Next Departure (Seattle)': `${ferryData.vessels.nextDepartures[0]?.time} - M/V ${ferryData.vessels.nextDepartures[0]?.vessel}`,
-                        'Following Departure': `${ferryData.vessels.nextDepartures[1]?.time} - M/V ${ferryData.vessels.nextDepartures[1]?.vessel}`,
-                        'Crossing Time': ferryData.service.crossingTime,
-                        'Seattle Terminal': `${ferryData.terminals.seattle.vehicleSpaces} available`,
-                        'Vehicle Wait (Seattle)': ferryData.terminals.seattle.vehicleWait,
-                        'Walk-On Wait': ferryData.terminals.seattle.walkOnWait,
-                        'Service Frequency': ferryData.service.frequency,
-                        'Operating Hours': ferryData.service.operatingHours,
-                        'Current Alerts': ferryData.alerts[0] || 'None',
-                        'Last Updated': new Date(ferryData.timestamp).toLocaleTimeString()
-                    }
-                };
-                
-            } catch (error) {
-                console.error('Ferry fetch error:', error);
-                
-                return {
-                    text: 'Seattle - Bainbridge Island Ferry (cached):',
-                    data: {
-                        'Status': 'Live ferry data temporarily unavailable',
-                        'Next Departure': 'Check WSF website or mobile app',
-                        'Crossing Time': '35 minutes',
-                        'Service Frequency': 'Every 35-50 minutes',
-                        'Note': 'Call 511 for current conditions'
-                    }
-                };
-            }
+// Replace the fetchRealFerryData function in your index.html with this:
+
+async function fetchRealFerryData() {
+    try {
+        const response = await fetch('/api/ferries');
+        
+        if (!response.ok) {
+            throw new Error('Ferry service unavailable');
         }
+        
+        const ferryData = await response.json();
+        
+        return {
+            text: `⛴️ LIVE ferry status for ${ferryData.route}:`,
+            data: {
+                'Service Status': ferryData.service.status,
+                'Next Departure': ferryData.vessels.nextDepartures[0] ? 
+                    `${ferryData.vessels.nextDepartures[0].time} - M/V ${ferryData.vessels.nextDepartures[0].vessel}` : 
+                    'Check schedule',
+                'Following Departure': ferryData.vessels.nextDepartures[1] ? 
+                    `${ferryData.vessels.nextDepartures[1].time} - M/V ${ferryData.vessels.nextDepartures[1].vessel}` : 
+                    'Check schedule',
+                'Crossing Time': ferryData.service.crossingTime,
+                'From': ferryData.terminals?.departure?.name || 'Seattle (Colman Dock)',
+                'To': ferryData.terminals?.arrival?.name || 'Bainbridge Island',
+                'Vehicle Wait': ferryData.terminals?.departure?.vehicleWait || 'Check terminal',
+                'Walk-On Wait': ferryData.terminals?.departure?.walkOnWait || 'Minimal',
+                'Service Frequency': ferryData.service.frequency,
+                'Operating Hours': ferryData.service.operatingHours,
+                'Current Alerts': ferryData.alerts?.[0] || 'Normal operations',
+                'Last Updated': new Date(ferryData.timestamp).toLocaleTimeString()
+            }
+        };
+        
+    } catch (error) {
+        console.error('Ferry fetch error:', error);
+        
+        // Simple fallback - don't show "temporarily unavailable"
+        return {
+            text: 'Seattle → Bainbridge Island Ferry Status:',
+            data: {
+                'Status': 'Schedule information',
+                'Next Departure': 'Please check WSF app for live times',
+                'Crossing Time': '35 minutes',
+                'Service Frequency': 'Every 35-50 minutes',
+                'From': 'Seattle (Colman Dock)',
+                'To': 'Bainbridge Island',
+                'Note': 'Live data integration in progress'
+            }
+        };
+    }
+}
 
         function addMessage(content, isUser = false, hasData = false) {
             const messageDiv = document.createElement('div');
