@@ -305,12 +305,12 @@
                             Live NOAA weather, sea state, visibility, and forecasts
                         </div>
                         <div class="data-card">
-                            <h5>⚓ Port Services</h5>
-                            Seattle, Tacoma, Vancouver terminal status and services
+                            <h5>⛴️ Ferry Operations</h5>
+                            Live WSF schedules, delays, and vehicle wait times
                         </div>
                         <div class="data-card">
-                            <h5>⛴️ Ferry Operations</h5>
-                            WSF and BC Ferries schedules with real-time updates
+                            <h5>⚓ Port Services</h5>
+                            Seattle, Tacoma, Vancouver terminal status and services
                         </div>
                     </div>
                 </div>
@@ -318,7 +318,7 @@
         </div>
 
         <div class="quick-actions">
-            <h4>Quick Maritime Info</h4>
+            <h4>Live Maritime Data</h4>
             <div class="action-buttons">
                 <button class="action-btn" onclick="sendQuickMessage('Current weather conditions Puget Sound')">🌤️ Weather</button>
                 <button class="action-btn" onclick="sendQuickMessage('Ferry schedule Seattle Bainbridge Island')">⛴️ Ferries</button>
@@ -339,11 +339,11 @@
         </div>
 
         <div class="typing-indicator" id="typingIndicator">
-            Maritime Assistant is analyzing live conditions...
+            Maritime Assistant is accessing live data...
         </div>
         
         <div class="footer-info">
-            Pacific Northwest Maritime Intelligence • v1.0 • Live NOAA Data
+            Pacific Northwest Maritime Intelligence • v2.0 • Live NOAA + WSF Data
         </div>
     </div>
 
@@ -352,20 +352,8 @@
         const messageInput = document.getElementById('messageInput');
         const typingIndicator = document.getElementById('typingIndicator');
 
-        // Static responses for non-weather data
+        // Static responses for non-integrated data
         const staticResponses = {
-            'ferry': {
-                'text': 'Seattle - Bainbridge Island Ferry Status:',
-                'data': {
-                    'Next Departure (Seattle)': '2:35 PM - M/V Wenatchee',
-                    'Following Departure': '3:25 PM - M/V Spokane',
-                    'Current Crossing Time': '35 minutes',
-                    'Service Status': 'On schedule ✅',
-                    'Vehicle Deck': '70% capacity',
-                    'Passenger Deck': 'Moderate crowds',
-                    'Estimated Wait': 'Walk-ons: None, Vehicles: 15 min'
-                }
-            },
             'port': {
                 'text': 'Port of Seattle Terminal Operations:',
                 'data': {
@@ -446,7 +434,6 @@
             } catch (error) {
                 console.error('Weather fetch error:', error);
                 
-                // Fallback to static data if API fails
                 return {
                     text: 'Marine conditions for Puget Sound (cached):',
                     data: {
@@ -454,9 +441,51 @@
                         'Wind': 'NW 12-15 knots (estimated)',
                         'Visibility': '10+ nautical miles',
                         'Sea State': 'Moderate (2-3 ft waves)',
-                        'Conditions': 'Use caution - verify conditions',
-                        'Note': 'Check VHF weather radio for updates',
-                        'Fallback': 'Real-time data will resume shortly'
+                        'Note': 'Check VHF weather radio for updates'
+                    }
+                };
+            }
+        }
+
+        // Fetch real ferry data from WSF
+        async function fetchRealFerryData() {
+            try {
+                const response = await fetch('/api/ferries?route=seattle-bainbridge');
+                
+                if (!response.ok) {
+                    throw new Error('Ferry service unavailable');
+                }
+                
+                const ferryData = await response.json();
+                
+                return {
+                    text: `⛴️ LIVE ferry status for ${ferryData.route}:`,
+                    data: {
+                        'Service Status': ferryData.service.status,
+                        'Next Departure (Seattle)': `${ferryData.vessels.nextDepartures[0]?.time} - M/V ${ferryData.vessels.nextDepartures[0]?.vessel}`,
+                        'Following Departure': `${ferryData.vessels.nextDepartures[1]?.time} - M/V ${ferryData.vessels.nextDepartures[1]?.vessel}`,
+                        'Crossing Time': ferryData.service.crossingTime,
+                        'Seattle Terminal': `${ferryData.terminals.seattle.vehicleSpaces} available`,
+                        'Vehicle Wait (Seattle)': ferryData.terminals.seattle.vehicleWait,
+                        'Walk-On Wait': ferryData.terminals.seattle.walkOnWait,
+                        'Service Frequency': ferryData.service.frequency,
+                        'Operating Hours': ferryData.service.operatingHours,
+                        'Current Alerts': ferryData.alerts[0] || 'None',
+                        'Last Updated': new Date(ferryData.timestamp).toLocaleTimeString()
+                    }
+                };
+                
+            } catch (error) {
+                console.error('Ferry fetch error:', error);
+                
+                return {
+                    text: 'Seattle - Bainbridge Island Ferry (cached):',
+                    data: {
+                        'Status': 'Live ferry data temporarily unavailable',
+                        'Next Departure': 'Check WSF website or mobile app',
+                        'Crossing Time': '35 minutes',
+                        'Service Frequency': 'Every 35-50 minutes',
+                        'Note': 'Call 511 for current conditions'
                     }
                 };
             }
@@ -496,15 +525,18 @@
         async function getResponse(message) {
             const lowerMessage = message.toLowerCase();
             
-            // Check if requesting weather data - USE REAL NOAA DATA
+            // Real weather data
             if (lowerMessage.includes('weather') || lowerMessage.includes('conditions') || lowerMessage.includes('wind')) {
                 return await fetchRealWeather();
             }
             
-            // Use static responses for other data types
+            // Real ferry data
             if (lowerMessage.includes('ferry') || lowerMessage.includes('bainbridge') || lowerMessage.includes('schedule')) {
-                return staticResponses.ferry;
-            } else if (lowerMessage.includes('port') || lowerMessage.includes('terminal') || lowerMessage.includes('seattle') || lowerMessage.includes('tacoma')) {
+                return await fetchRealFerryData();
+            }
+            
+            // Static responses for other data
+            if (lowerMessage.includes('port') || lowerMessage.includes('terminal') || lowerMessage.includes('seattle') || lowerMessage.includes('tacoma')) {
                 return staticResponses.port;
             } else if (lowerMessage.includes('traffic') || lowerMessage.includes('vessel') || lowerMessage.includes('ship')) {
                 return staticResponses.traffic;
@@ -517,7 +549,7 @@
                     text: "I provide real-time maritime information for the Pacific Northwest. I can help with:",
                     data: {
                         '🌤️ Marine Weather': '⚡ Live NOAA conditions, wind, visibility, forecasts',
-                        '⛴️ Ferry Services': 'WSF schedules, delays, capacity information',
+                        '⛴️ Ferry Services': '⚡ Live WSF schedules, delays, vehicle wait times',
                         '🏭 Port Operations': 'Terminal status, vessel schedules, congestion',
                         '🚢 Vessel Traffic': 'Ship movements, anchorages, channel status',
                         '🌊 Tides & Currents': 'Tide tables, current predictions, water levels',
@@ -587,7 +619,7 @@
 
         // Welcome sequence
         setTimeout(() => {
-            addMessage("💡 Now featuring LIVE NOAA weather data! Try the weather button to see real maritime conditions for Puget Sound.", false);
+            addMessage("💡 Now featuring LIVE NOAA weather + WSF ferry data! Try the weather or ferry buttons to see real-time Pacific Northwest maritime intelligence.", false);
         }, 3000);
 
         // Prevent zoom on double tap (mobile)
