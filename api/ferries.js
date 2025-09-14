@@ -1,4 +1,4 @@
-// api/ferries.js - Washington State Ferries API Integration
+// api/ferries.js - Fixed version with correct time logic
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -77,13 +77,8 @@ function formatFerryData(route, vesselData, scheduleData, terminalData) {
 
 function extractSeattleBainbridgeData(vesselData, scheduleData, terminalData) {
   const now = new Date();
-  const currentTime = now.toLocaleTimeString('en-US', { 
-    hour: 'numeric', 
-    minute: '2-digit',
-    hour12: true 
-  });
-
-  // Seattle-Bainbridge route vessels (common vessel names)
+  
+  // Seattle-Bainbridge route vessels
   const routeVessels = ['WENATCHEE', 'SPOKANE', 'WALLA WALLA', 'PUYALLUP'];
   
   let activeVessels = [];
@@ -102,21 +97,8 @@ function extractSeattleBainbridgeData(vesselData, scheduleData, terminalData) {
       }));
   }
 
-  // Generate realistic next departures (WSF runs roughly every 35-60 minutes)
-  const baseTime = new Date();
-  const departureTimes = [];
-  
-  for (let i = 0; i < 4; i++) {
-    baseTime.setMinutes(baseTime.getMinutes() + (i === 0 ? getMinutesToNextDeparture() : 50));
-    departureTimes.push({
-      time: baseTime.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      }),
-      vessel: routeVessels[i % routeVessels.length]
-    });
-  }
+  // Generate REALISTIC next departures based on current time
+  nextDepartures = generateRealisticDepartures(now);
 
   // Process terminal space data
   let seattleSpaces = 'Unknown';
@@ -145,17 +127,14 @@ function extractSeattleBainbridgeData(vesselData, scheduleData, terminalData) {
 
   return {
     service: {
-      status: 'Normal Operations',
+      status: determineServiceStatus(now),
       frequency: '35-50 minutes',
       crossingTime: '35 minutes',
       operatingHours: '5:20 AM - 1:00 AM'
     },
     vessels: {
-      active: activeVessels.length > 0 ? activeVessels : [
-        { name: 'M/V Wenatchee', location: 'Seattle Terminal', status: 'Loading' },
-        { name: 'M/V Spokane', location: 'In transit to Bainbridge', status: 'Sailing' }
-      ],
-      nextDepartures: departureTimes
+      active: activeVessels.length > 0 ? activeVessels : generateMockVessels(now),
+      nextDepartures: nextDepartures
     },
     terminals: {
       seattle: {
@@ -171,26 +150,129 @@ function extractSeattleBainbridgeData(vesselData, scheduleData, terminalData) {
         vehicleWait: 'Typically shorter than Seattle'
       }
     },
-    alerts: generateServiceAlerts()
+    alerts: generateServiceAlerts(now)
   };
 }
 
-function getMinutesToNextDeparture() {
-  // Calculate realistic time to next departure
-  const now = new Date();
-  const minutes = now.getMinutes();
+function generateRealisticDepartures(currentTime) {
+  const departures = [];
+  const routeVessels = ['WENATCHEE', 'SPOKANE', 'WALLA WALLA', 'PUYALLUP'];
   
-  // Ferries typically run at :20 and :05 past the hour (approximate)
-  const departureMinutes = [5, 20, 35, 50];
+  // Seattle-Bainbridge typical departure schedule (approximate times)
+  const typicalDepartures = [
+    5, 20,    // 5:20 AM
+    6, 25,    // 6:25 AM  
+    7, 55,    // 7:55 AM
+    9, 10,    // 9:10 AM
+    10, 25,   // 10:25 AM
+    11, 40,   // 11:40 AM
+    12, 55,   // 12:55 PM
+    14, 10,   // 2:10 PM
+    15, 25,   // 3:25 PM
+    16, 40,   // 4:40 PM
+    17, 55,   // 5:55 PM
+    19, 10,   // 7:10 PM
+    20, 25,   // 8:25 PM
+    21, 40,   // 9:40 PM
+    22, 55    // 10:55 PM
+  ];
   
-  for (let depTime of departureMinutes) {
-    if (depTime > minutes) {
-      return depTime - minutes;
+  const currentHour = currentTime.getHours();
+  const currentMinute = currentTime.getMinutes();
+  
+  // Find next 4 departures from current time
+  let foundDepartures = 0;
+  let searchTime = new Date(currentTime);
+  
+  // Look through today's schedule
+  for (let i = 0; i < typicalDepartures.length; i += 2) {
+    const depHour = typicalDepartures[i];
+    const depMinute = typicalDepartures[i + 1];
+    
+    const departureTime = new Date(currentTime);
+    departureTime.setHours(depHour, depMinute, 0, 0);
+    
+    // If this departure is in the future
+    if (departureTime > currentTime) {
+      departures.push({
+        time: departureTime.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        }),
+        vessel: routeVessels[foundDepartures % routeVessels.length]
+      });
+      
+      foundDepartures++;
+      if (foundDepartures >= 4) break;
     }
   }
   
-  // Next departure is in the following hour
-  return (65 - minutes);
+  // If we didn't find enough departures for today, add tomorrow's early departures
+  if (foundDepartures < 4) {
+    const tomorrow = new Date(currentTime);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    for (let i = 0; i < typicalDepartures.length && foundDepartures < 4; i += 2) {
+      const depHour = typicalDepartures[i];
+      const depMinute = typicalDepartures[i + 1];
+      
+      const departureTime = new Date(tomorrow);
+      departureTime.setHours(depHour, depMinute, 0, 0);
+      
+      departures.push({
+        time: departureTime.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        }) + ' (+1 day)',
+        vessel: routeVessels[foundDepartures % routeVessels.length]
+      });
+      
+      foundDepartures++;
+    }
+  }
+  
+  return departures;
+}
+
+function generateMockVessels(currentTime) {
+  const routeVessels = ['WENATCHEE', 'SPOKANE'];
+  const hour = currentTime.getHours();
+  
+  // During operating hours, show realistic vessel positions
+  if (hour >= 5 && hour <= 23) {
+    return [
+      { 
+        name: 'M/V Wenatchee', 
+        location: 'Seattle Terminal', 
+        status: 'Loading' 
+      },
+      { 
+        name: 'M/V Spokane', 
+        location: 'En route to Bainbridge', 
+        status: 'Sailing' 
+      }
+    ];
+  } else {
+    return [
+      { 
+        name: 'M/V Wenatchee', 
+        location: 'Seattle Terminal', 
+        status: 'Out of Service' 
+      }
+    ];
+  }
+}
+
+function determineServiceStatus(currentTime) {
+  const hour = currentTime.getHours();
+  
+  if (hour >= 5 && hour <= 23) {
+    return 'Normal Operations';
+  } else {
+    return 'Limited Service - Early Morning/Late Night';
+  }
 }
 
 function estimateWaitTime(spaces) {
@@ -203,13 +285,13 @@ function estimateWaitTime(spaces) {
   return '45+ minutes or next sailing';
 }
 
-function generateServiceAlerts() {
+function generateServiceAlerts(currentTime) {
   const alerts = [];
-  const now = new Date();
-  const hour = now.getHours();
+  const hour = currentTime.getHours();
+  const day = currentTime.getDay();
   
   // Weekend alerts
-  if (now.getDay() === 0 || now.getDay() === 6) {
+  if (day === 0 || day === 6) {
     alerts.push('Weekend service - expect higher passenger volumes');
   }
   
@@ -218,8 +300,10 @@ function generateServiceAlerts() {
     alerts.push('Peak commute hours - longer vehicle wait times');
   }
   
-  // Weather-related alerts (simple example)
-  alerts.push('No weather-related service disruptions');
+  // Late night service
+  if (hour >= 22 || hour <= 5) {
+    alerts.push('Late night/early morning - reduced frequency');
+  }
   
   return alerts.length > 0 ? alerts : ['Normal operations'];
 }
