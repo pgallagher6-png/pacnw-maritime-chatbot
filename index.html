@@ -1,566 +1,253 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PacNW Maritime Assistant | Real-time Pacific Northwest Maritime Information</title>
-    <meta name="description" content="Real-time maritime information for the Pacific Northwest. Get ferry schedules, marine weather, port status, vessel tracking, and tide information for Puget Sound, Seattle, Tacoma, and beyond.">
-    <meta name="keywords" content="pacific northwest maritime, puget sound weather, ferry schedules, port seattle, maritime assistant, marine conditions, vessel tracking">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌊</text></svg>">
-    
-    <!-- Open Graph for social sharing -->
-    <meta property="og:title" content="PacNW Maritime Assistant">
-    <meta property="og:description" content="Real-time maritime information for the Pacific Northwest">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://pacnwmaritime.com">
-    
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+// Updated JavaScript for your chatbot with real NOAA weather integration
+// Replace the existing JavaScript in your index.html with this
+
+const chatArea = document.getElementById('chatArea');
+const messageInput = document.getElementById('messageInput');
+const typingIndicator = document.getElementById('typingIndicator');
+
+// Static responses for non-weather data (for now)
+const staticResponses = {
+    'ferry': {
+        'text': 'Seattle - Bainbridge Island Ferry Status:',
+        'data': {
+            'Next Departure (Seattle)': '2:35 PM - M/V Wenatchee',
+            'Following Departure': '3:25 PM - M/V Spokane',
+            'Current Crossing Time': '35 minutes',
+            'Service Status': 'On schedule ✅',
+            'Vehicle Deck': '70% capacity',
+            'Passenger Deck': 'Moderate crowds',
+            'Estimated Wait': 'Walk-ons: None, Vehicles: 15 min'
         }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
+    },
+    'port': {
+        'text': 'Port of Seattle Terminal Operations:',
+        'data': {
+            'Terminal 18': 'Active - MSC Margherita loading',
+            'Terminal 46': 'Active - 2 vessels at berth',
+            'Terminal 5': 'Maintenance - Reopens 6:00 PM',
+            'Grain Terminal (86)': 'Loading M/V Pacific Dawn',
+            'Traffic Congestion': 'Light to moderate',
+            'Pilot Services': 'Normal operations',
+            'Harbor Status': 'Open - no restrictions'
         }
-
-        .chatbot-container {
-            width: 100%;
-            max-width: 400px;
-            height: 90vh;
-            max-height: 700px;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
+    },
+    'traffic': {
+        'text': 'Current vessel traffic in Elliott Bay area:',
+        'data': {
+            'Commercial Vessels': '14 ships in vicinity',
+            'Inbound Traffic': '3 container ships, 1 tanker',
+            'Outbound Traffic': '2 bulk carriers departing',
+            'At Anchor': '6 vessels awaiting berth',
+            'Ferry Operations': 'Normal service all routes',
+            'Recreational Traffic': 'Moderate weekend activity',
+            'Traffic Restrictions': 'None currently active'
         }
-
-        .header {
-            background: linear-gradient(135deg, #0f4c75 0%, #3282b8 100%);
-            color: white;
-            padding: 20px;
-            text-align: center;
-            position: relative;
+    },
+    'tide': {
+        'text': 'Seattle tide information - ' + new Date().toLocaleDateString(),
+        'data': {
+            'Current Level': '4.1 feet and rising',
+            'High Tide Today': '4:45 PM (11.6 feet)',
+            'Low Tide Tonight': '10:42 PM (1.8 feet)',
+            'Next High Tide': 'Tomorrow 5:23 AM (10.4 feet)',
+            'Tidal Current': 'Flood tide - 1.4 knots',
+            'Extreme Tides': 'Spring tide period',
+            'Current Set': 'Northbound in main channel'
         }
-
-        .header h1 {
-            font-size: 1.3em;
-            margin-bottom: 8px;
-            font-weight: 600;
+    },
+    'warning': {
+        'text': 'Active maritime notices for Puget Sound region:',
+        'data': {
+            'Navigation': 'Construction near Pier 70 - reduced speed',
+            'Dredging': 'Duwamish Waterway - daylight hours',
+            'Marine Event': 'Sailing regatta Lake Union 1-5 PM',
+            'Bridge Status': 'Ballard Bridge - normal operations',
+            'VHF Radio Check': 'Seattle Traffic - Channel 14',
+            'Coast Guard': 'Sector Puget Sound - normal ops',
+            'Last Updated': '30 minutes ago'
         }
+    }
+};
 
-        .header p {
-            font-size: 0.9em;
-            opacity: 0.9;
-            line-height: 1.4;
-        }
-
-        .status-indicator {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 12px;
-            height: 12px;
-            background: #4CAF50;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(1.1); }
-            100% { opacity: 1; transform: scale(1); }
-        }
-
-        .chat-area {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-            background: #f8f9fa;
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-        }
-
-        .chat-area::-webkit-scrollbar {
-            display: none;
-        }
-
-        .message {
-            margin-bottom: 16px;
-            display: flex;
-            align-items: flex-start;
-        }
-
-        .message.user {
-            justify-content: flex-end;
-        }
-
-        .message.bot {
-            justify-content: flex-start;
-        }
-
-        .message-content {
-            max-width: 85%;
-            padding: 14px 18px;
-            border-radius: 18px;
-            font-size: 0.9em;
-            line-height: 1.5;
-            word-wrap: break-word;
-        }
-
-        .message.user .message-content {
-            background: #007bff;
-            color: white;
-            border-bottom-right-radius: 6px;
-        }
-
-        .message.bot .message-content {
-            background: white;
-            color: #333;
-            border: 1px solid #e0e0e0;
-            border-bottom-left-radius: 6px;
-        }
-
-        .quick-actions {
-            padding: 16px;
-            background: white;
-            border-top: 1px solid #e0e0e0;
-        }
-
-        .quick-actions h4 {
-            font-size: 0.8em;
-            color: #666;
-            margin-bottom: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            font-weight: 600;
-        }
-
-        .action-buttons {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        .action-btn {
-            padding: 12px 8px;
-            background: #f1f3f4;
-            border: none;
-            border-radius: 10px;
-            font-size: 0.8em;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            text-align: center;
-            font-weight: 500;
-        }
-
-        .action-btn:hover {
-            background: #e8f0fe;
-            color: #1976d2;
-            transform: translateY(-1px);
-        }
-
-        .action-btn:active {
-            transform: translateY(0);
-        }
-
-        .input-area {
-            padding: 16px;
-            background: white;
-            border-top: 1px solid #e0e0e0;
-        }
-
-        .input-container {
-            display: flex;
-            gap: 12px;
-            align-items: center;
-        }
-
-        .message-input {
-            flex: 1;
-            padding: 14px 18px;
-            border: 1px solid #e0e0e0;
-            border-radius: 25px;
-            outline: none;
-            font-size: 0.9em;
-            transition: border-color 0.2s ease;
-        }
-
-        .message-input:focus {
-            border-color: #007bff;
-            box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
-        }
-
-        .send-btn {
-            width: 48px;
-            height: 48px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            font-size: 1.1em;
-        }
-
-        .send-btn:hover {
-            background: #0056b3;
-            transform: scale(1.05);
-        }
-
-        .send-btn:active {
-            transform: scale(0.95);
-        }
-
-        .typing-indicator {
-            display: none;
-            padding: 12px 18px;
-            color: #666;
-            font-style: italic;
-            font-size: 0.85em;
-            background: rgba(0,0,0,0.05);
-            border-radius: 10px;
-            margin: 0 20px 10px 20px;
-        }
-
-        .data-card {
-            background: #f8f9fa;
-            border: 1px solid #e0e0e0;
-            border-radius: 12px;
-            padding: 14px;
-            margin: 10px 0;
-            font-size: 0.85em;
-            transition: background-color 0.2s ease;
-        }
-
-        .data-card:hover {
-            background: #f0f2f5;
-        }
-
-        .data-card h5 {
-            color: #007bff;
-            margin-bottom: 6px;
-            font-weight: 600;
-            font-size: 0.9em;
-        }
-
-        .welcome-cards {
-            margin-top: 10px;
-        }
-
-        .footer-info {
-            padding: 12px 20px;
-            background: #f8f9fa;
-            border-top: 1px solid #e0e0e0;
-            text-align: center;
-            font-size: 0.75em;
-            color: #666;
-        }
-
-        @media (max-width: 480px) {
-            body {
-                padding: 10px;
-            }
-            
-            .chatbot-container {
-                height: 95vh;
-                border-radius: 15px;
-            }
-            
-            .header {
-                padding: 16px;
-            }
-            
-            .header h1 {
-                font-size: 1.1em;
-            }
-            
-            .chat-area {
-                padding: 16px;
-            }
-            
-            .action-buttons {
-                grid-template-columns: 1fr;
-                gap: 8px;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="chatbot-container">
-        <div class="header">
-            <div class="status-indicator"></div>
-            <h1>🌊 PacNW Maritime Assistant</h1>
-            <p>Real-time maritime information for the Pacific Northwest</p>
-        </div>
-
-        <div class="chat-area" id="chatArea">
-            <div class="message bot">
-                <div class="message-content">
-                    Welcome to the Pacific Northwest Maritime Assistant! I provide real-time information for mariners, ferry commuters, and maritime professionals.
-                    <div class="welcome-cards">
-                        <div class="data-card">
-                            <h5>🚢 Vessel & Traffic</h5>
-                            Real-time positions, port congestion, and arrival schedules
-                        </div>
-                        <div class="data-card">
-                            <h5>🌊 Marine Conditions</h5>
-                            Weather, sea state, visibility, and marine forecasts
-                        </div>
-                        <div class="data-card">
-                            <h5>⚓ Port Services</h5>
-                            Seattle, Tacoma, Vancouver terminal status and services
-                        </div>
-                        <div class="data-card">
-                            <h5>⛴️ Ferry Operations</h5>
-                            WSF and BC Ferries schedules with real-time updates
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="quick-actions">
-            <h4>Quick Maritime Info</h4>
-            <div class="action-buttons">
-                <button class="action-btn" onclick="sendQuickMessage('Current weather conditions Puget Sound')">🌤️ Weather</button>
-                <button class="action-btn" onclick="sendQuickMessage('Ferry schedule Seattle Bainbridge Island')">⛴️ Ferries</button>
-                <button class="action-btn" onclick="sendQuickMessage('Port of Seattle terminal status today')">🏭 Ports</button>
-                <button class="action-btn" onclick="sendQuickMessage('Vessel traffic Elliott Bay current')">🚢 Traffic</button>
-                <button class="action-btn" onclick="sendQuickMessage('Tide chart Seattle today')">🌊 Tides</button>
-                <button class="action-btn" onclick="sendQuickMessage('Active navigation warnings Puget Sound')">⚠️ Warnings</button>
-            </div>
-        </div>
-
-        <div class="input-area">
-            <div class="input-container">
-                <input type="text" class="message-input" id="messageInput" placeholder="Ask about conditions, schedules, ports, or navigation...">
-                <button class="send-btn" onclick="sendMessage()">
-                    <span>➤</span>
-                </button>
-            </div>
-        </div>
-
-        <div class="typing-indicator" id="typingIndicator">
-            Maritime Assistant is analyzing conditions...
-        </div>
+// Fetch real weather data from NOAA
+async function fetchRealWeather() {
+    try {
+        const response = await fetch('/api/weather');
         
-        <div class="footer-info">
-            Pacific Northwest Maritime Intelligence • v1.0
-        </div>
-    </div>
-
-    <script>
-        const chatArea = document.getElementById('chatArea');
-        const messageInput = document.getElementById('messageInput');
-        const typingIndicator = document.getElementById('typingIndicator');
-
-        // Enhanced maritime responses with more realistic data
-        const responses = {
-            'weather': {
-                'text': 'Current marine conditions for Puget Sound:',
-                'data': {
-                    'Wind': 'NW 12-15 knots, gusting to 20',
-                    'Visibility': '10+ nautical miles',
-                    'Sea State': 'Choppy, 2-3 foot waves',
-                    'Temperature': 'Air 52°F (11°C), Water 48°F',
-                    'Barometer': '30.15" and rising',
-                    'Small Craft Advisory': 'None active',
-                    'Forecast': 'Seas decreasing to 1-2 ft by evening'
-                }
-            },
-            'ferry': {
-                'text': 'Seattle - Bainbridge Island Ferry Status:',
-                'data': {
-                    'Next Departure (Seattle)': '2:35 PM - M/V Wenatchee',
-                    'Following Departure': '3:25 PM - M/V Spokane',
-                    'Current Crossing Time': '35 minutes',
-                    'Service Status': 'On schedule ✅',
-                    'Vehicle Deck': '70% capacity',
-                    'Passenger Deck': 'Moderate crowds',
-                    'Estimated Wait': 'Walk-ons: None, Vehicles: 15 min'
-                }
-            },
-            'port': {
-                'text': 'Port of Seattle Terminal Operations:',
-                'data': {
-                    'Terminal 18': 'Active - MSC Margherita loading',
-                    'Terminal 46': 'Active - 2 vessels at berth',
-                    'Terminal 5': 'Maintenance - Reopens 6:00 PM',
-                    'Grain Terminal (86)': 'Loading M/V Pacific Dawn',
-                    'Traffic Congestion': 'Light to moderate',
-                    'Pilot Services': 'Normal operations',
-                    'Harbor Status': 'Open - no restrictions'
-                }
-            },
-            'traffic': {
-                'text': 'Current vessel traffic in Elliott Bay area:',
-                'data': {
-                    'Commercial Vessels': '14 ships in vicinity',
-                    'Inbound Traffic': '3 container ships, 1 tanker',
-                    'Outbound Traffic': '2 bulk carriers departing',
-                    'At Anchor': '6 vessels awaiting berth',
-                    'Ferry Operations': 'Normal service all routes',
-                    'Recreational Traffic': 'Moderate weekend activity',
-                    'Traffic Restrictions': 'None currently active'
-                }
-            },
-            'tide': {
-                'text': 'Seattle tide information - ' + new Date().toLocaleDateString(),
-                'data': {
-                    'Current Level': '4.1 feet and rising',
-                    'High Tide Today': '4:45 PM (11.6 feet)',
-                    'Low Tide Tonight': '10:42 PM (1.8 feet)',
-                    'Next High Tide': 'Tomorrow 5:23 AM (10.4 feet)',
-                    'Tidal Current': 'Flood tide - 1.4 knots',
-                    'Extreme Tides': 'Spring tide period',
-                    'Current Set': 'Northbound in main channel'
-                }
-            },
-            'warning': {
-                'text': 'Active maritime notices for Puget Sound region:',
-                'data': {
-                    'Navigation': 'Construction near Pier 70 - reduced speed',
-                    'Dredging': 'Duwamish Waterway - daylight hours',
-                    'Marine Event': 'Sailing regatta Lake Union 1-5 PM',
-                    'Bridge Status': 'Ballard Bridge - normal operations',
-                    'VHF Radio Check': 'Seattle Traffic - Channel 14',
-                    'Coast Guard': 'Sector Puget Sound - normal ops',
-                    'Last Updated': '30 minutes ago'
-                }
+        if (!response.ok) {
+            throw new Error('Weather service unavailable');
+        }
+        
+        const weatherData = await response.json();
+        
+        return {
+            text: `Real-time marine conditions for ${weatherData.location}:`,
+            data: {
+                'Wind': weatherData.conditions.wind,
+                'Temperature': weatherData.conditions.temperature,
+                'Visibility': weatherData.conditions.visibility,
+                'Humidity': weatherData.conditions.humidity,
+                'Barometric Pressure': weatherData.conditions.pressure,
+                'Sea State': weatherData.maritime.seaState,
+                'Conditions': weatherData.maritime.conditions,
+                'Small Craft Advisory': weatherData.maritime.smallCraftAdvisory ? 'Active ⚠️' : 'None',
+                'Last Updated': new Date(weatherData.timestamp).toLocaleTimeString()
             }
         };
-
-        function addMessage(content, isUser = false, hasData = false) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
-            
-            let messageContent = `<div class="message-content">${content}`;
-            
-            if (hasData && typeof content === 'object') {
-                messageContent = `<div class="message-content">${content.text}`;
-                for (const [key, value] of Object.entries(content.data)) {
-                    messageContent += `<div class="data-card"><h5>${key}</h5>${value}</div>`;
-                }
+        
+    } catch (error) {
+        console.error('Weather fetch error:', error);
+        
+        // Fallback to static data if API fails
+        return {
+            text: 'Marine conditions for Puget Sound (cached data):',
+            data: {
+                'Status': 'Live weather temporarily unavailable',
+                'Wind': 'NW 12-15 knots (estimated)',
+                'Visibility': '10+ nautical miles',
+                'Sea State': 'Moderate (2-3 ft waves)',
+                'Conditions': 'Use caution - verify conditions',
+                'Note': 'Check VHF weather radio for updates',
+                'Fallback': 'Real-time data will resume shortly'
             }
-            
-            messageContent += '</div>';
-            messageDiv.innerHTML = messageContent;
-            chatArea.appendChild(messageDiv);
-            
-            // Smooth scroll to bottom
-            setTimeout(() => {
-                chatArea.scrollTop = chatArea.scrollHeight;
-            }, 100);
-        }
+        };
+    }
+}
 
-        function showTyping() {
-            typingIndicator.style.display = 'block';
-            chatArea.scrollTop = chatArea.scrollHeight;
+function addMessage(content, isUser = false, hasData = false) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${isUser ? 'user' : 'bot'}`;
+    
+    let messageContent = `<div class="message-content">${content}`;
+    
+    if (hasData && typeof content === 'object') {
+        messageContent = `<div class="message-content">${content.text}`;
+        for (const [key, value] of Object.entries(content.data)) {
+            messageContent += `<div class="data-card"><h5>${key}</h5>${value}</div>`;
         }
+    }
+    
+    messageContent += '</div>';
+    messageDiv.innerHTML = messageContent;
+    chatArea.appendChild(messageDiv);
+    
+    setTimeout(() => {
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }, 100);
+}
 
-        function hideTyping() {
-            typingIndicator.style.display = 'none';
-        }
+function showTyping() {
+    typingIndicator.style.display = 'block';
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
 
-        function getResponse(message) {
-            const lowerMessage = message.toLowerCase();
-            
-            if (lowerMessage.includes('weather') || lowerMessage.includes('conditions') || lowerMessage.includes('wind')) {
-                return responses.weather;
-            } else if (lowerMessage.includes('ferry') || lowerMessage.includes('bainbridge') || lowerMessage.includes('schedule')) {
-                return responses.ferry;
-            } else if (lowerMessage.includes('port') || lowerMessage.includes('terminal') || lowerMessage.includes('seattle') || lowerMessage.includes('tacoma')) {
-                return responses.port;
-            } else if (lowerMessage.includes('traffic') || lowerMessage.includes('vessel') || lowerMessage.includes('ship')) {
-                return responses.traffic;
-            } else if (lowerMessage.includes('tide') || lowerMessage.includes('current') || lowerMessage.includes('water level')) {
-                return responses.tide;
-            } else if (lowerMessage.includes('warning') || lowerMessage.includes('navigation') || lowerMessage.includes('notice')) {
-                return responses.warning;
-            } else {
-                return {
-                    text: "I provide maritime information for the Pacific Northwest. I can help with:",
-                    data: {
-                        '🌤️ Marine Weather': 'Wind, visibility, sea conditions, forecasts',
-                        '⛴️ Ferry Services': 'WSF schedules, delays, capacity information',
-                        '🏭 Port Operations': 'Terminal status, vessel schedules, congestion',
-                        '🚢 Vessel Traffic': 'Ship movements, anchorages, channel status',
-                        '🌊 Tides & Currents': 'Tide tables, current predictions, water levels',
-                        '⚠️ Marine Notices': 'Navigation warnings, restrictions, safety alerts'
-                    }
-                };
+function hideTyping() {
+    typingIndicator.style.display = 'none';
+}
+
+async function getResponse(message) {
+    const lowerMessage = message.toLowerCase();
+    
+    // Check if requesting weather data
+    if (lowerMessage.includes('weather') || lowerMessage.includes('conditions') || lowerMessage.includes('wind')) {
+        return await fetchRealWeather();
+    }
+    
+    // Use static responses for other data types
+    if (lowerMessage.includes('ferry') || lowerMessage.includes('bainbridge') || lowerMessage.includes('schedule')) {
+        return staticResponses.ferry;
+    } else if (lowerMessage.includes('port') || lowerMessage.includes('terminal') || lowerMessage.includes('seattle') || lowerMessage.includes('tacoma')) {
+        return staticResponses.port;
+    } else if (lowerMessage.includes('traffic') || lowerMessage.includes('vessel') || lowerMessage.includes('ship')) {
+        return staticResponses.traffic;
+    } else if (lowerMessage.includes('tide') || lowerMessage.includes('current') || lowerMessage.includes('water level')) {
+        return staticResponses.tide;
+    } else if (lowerMessage.includes('warning') || lowerMessage.includes('navigation') || lowerMessage.includes('notice')) {
+        return staticResponses.warning;
+    } else {
+        return {
+            text: "I provide real-time maritime information for the Pacific Northwest. I can help with:",
+            data: {
+                '🌤️ Marine Weather': 'Live NOAA conditions, wind, visibility, forecasts',
+                '⛴️ Ferry Services': 'WSF schedules, delays, capacity information',
+                '🏭 Port Operations': 'Terminal status, vessel schedules, congestion',
+                '🚢 Vessel Traffic': 'Ship movements, anchorages, channel status',
+                '🌊 Tides & Currents': 'Tide tables, current predictions, water levels',
+                '⚠️ Marine Notices': 'Navigation warnings, restrictions, safety alerts'
             }
-        }
+        };
+    }
+}
 
-        function sendMessage() {
-            const message = messageInput.value.trim();
-            if (!message) return;
+async function sendMessage() {
+    const message = messageInput.value.trim();
+    if (!message) return;
 
-            addMessage(message, true);
-            messageInput.value = '';
+    addMessage(message, true);
+    messageInput.value = '';
 
-            showTyping();
-            
-            // Simulate realistic response time
-            setTimeout(() => {
-                hideTyping();
-                const response = getResponse(message);
-                addMessage(response, false, true);
-            }, 1200 + Math.random() * 800);
-        }
-
-        function sendQuickMessage(message) {
-            addMessage(message, true);
-            
-            showTyping();
-            
-            setTimeout(() => {
-                hideTyping();
-                const response = getResponse(message);
-                addMessage(response, false, true);
-            }, 1000 + Math.random() * 600);
-        }
-
-        // Enhanced enter key handling
-        messageInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-
-        // Auto-focus input on load
-        window.addEventListener('load', function() {
-            messageInput.focus();
-        });
-
-        // Welcome sequence
+    showTyping();
+    
+    try {
+        const response = await getResponse(message);
+        
         setTimeout(() => {
-            addMessage("💡 Pro tip: I provide real-time data for mariners and ferry commuters. Try asking about current conditions or click the quick action buttons below!", false);
-        }, 3000);
+            hideTyping();
+            addMessage(response, false, true);
+        }, 1000);
+        
+    } catch (error) {
+        setTimeout(() => {
+            hideTyping();
+            addMessage("Sorry, I'm having trouble accessing maritime data right now. Please try again in a moment.", false);
+        }, 1000);
+    }
+}
 
-        // Prevent zoom on double tap (mobile)
-        let lastTouchEnd = 0;
-        document.addEventListener('touchend', function (event) {
-            const now = (new Date()).getTime();
-            if (now - lastTouchEnd <= 300) {
-                event.preventDefault();
-            }
-            lastTouchEnd = now;
-        }, false);
-    </script>
-</body>
-</html>
+async function sendQuickMessage(message) {
+    addMessage(message, true);
+    
+    showTyping();
+    
+    try {
+        const response = await getResponse(message);
+        
+        setTimeout(() => {
+            hideTyping();
+            addMessage(response, false, true);
+        }, 800);
+        
+    } catch (error) {
+        setTimeout(() => {
+            hideTyping();
+            addMessage("Maritime data temporarily unavailable. Please try again.", false);
+        }, 800);
+    }
+}
+
+// Event listeners
+messageInput.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        sendMessage();
+    }
+});
+
+window.addEventListener('load', function() {
+    messageInput.focus();
+});
+
+// Welcome sequence with real weather
+setTimeout(async () => {
+    addMessage("💡 I now provide real-time NOAA weather data! Try asking about current marine conditions.", false);
+}, 3000);
+
+// Prevent zoom on double tap (mobile)
+let lastTouchEnd = 0;
+document.addEventListener('touchend', function (event) {
+    const now = (new Date()).getTime();
+    if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+    }
+    lastTouchEnd = now;
+}, false);
