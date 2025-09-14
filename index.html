@@ -603,12 +603,12 @@ function formatFerryResponse(ferryData) {
 async function getResponse(message) {
     const lowerMessage = message.toLowerCase();
     
-    // Real weather data
+    // Weather
     if (lowerMessage.includes('weather') || lowerMessage.includes('conditions') || lowerMessage.includes('wind')) {
         return await fetchRealWeather();
     }
     
-    // Ferry data - simplified detection
+    // Ferry - DIRECT API CALL (no other function calls)
     if (lowerMessage.includes('ferry') || lowerMessage.includes('ferries') ||
         lowerMessage.includes('bainbridge') || lowerMessage.includes('edmonds') || 
         lowerMessage.includes('kingston') || lowerMessage.includes('mukilteo') ||
@@ -616,17 +616,16 @@ async function getResponse(message) {
         lowerMessage.includes('bremerton') || lowerMessage.includes('san juan') ||
         lowerMessage.includes('anacortes') || lowerMessage.includes('schedule')) {
         
-        // Direct API call
         try {
-            const msg = message.toLowerCase();
+            // Route detection
             let routeQuery = 'seattle-bainbridge';
-            
-            if (msg.includes('whidbey') || msg.includes('mukilteo')) {
+            if (lowerMessage.includes('whidbey') || lowerMessage.includes('mukilteo')) {
                 routeQuery = 'mukilteo-clinton';
-            } else if (msg.includes('edmonds') || msg.includes('kingston')) {
+            } else if (lowerMessage.includes('edmonds') || lowerMessage.includes('kingston')) {
                 routeQuery = 'edmonds-kingston';
             }
             
+            // Direct API call
             const response = await fetch(`/api/ferries?route=${routeQuery}`);
             const ferryData = await response.json();
             
@@ -634,21 +633,38 @@ async function getResponse(message) {
                 text: `⛴️ ${ferryData.shortName} Status:`,
                 data: {
                     'Route': ferryData.shortName,
-                    'Next Departure': ferryData.vessels?.nextDepartures?.[0] ? 
-                        `${ferryData.vessels.nextDepartures[0].time} - M/V ${ferryData.vessels.nextDepartures[0].vessel}` : 
-                        'Check schedule',
-                    'Crossing Time': ferryData.service?.crossingTime,
-                    'Frequency': ferryData.service?.frequency,
-                    'Last Updated': new Date().toLocaleTimeString()
+                    'Next Departure': `${ferryData.vessels.nextDepartures[0].time} - M/V ${ferryData.vessels.nextDepartures[0].vessel} (${ferryData.vessels.nextDepartures[0].waitTime} min)`,
+                    'Following': `${ferryData.vessels.nextDepartures[1].time} - M/V ${ferryData.vessels.nextDepartures[1].vessel}`,
+                    'Crossing Time': ferryData.service.crossingTime,
+                    'Frequency': ferryData.service.frequency
                 }
             };
         } catch (error) {
             return {
-                text: 'Ferry Status:',
-                data: {'Error': 'API connection issue - check console'}
+                text: 'Ferry Error:',
+                data: {'Debug': error.message}
             };
         }
     }
+    
+    // Static responses
+    if (lowerMessage.includes('port')) {
+        return staticResponses.port;
+    } else if (lowerMessage.includes('traffic')) {
+        return staticResponses.traffic;
+    } else if (lowerMessage.includes('tide')) {
+        return staticResponses.tide;
+    } else if (lowerMessage.includes('warning')) {
+        return staticResponses.warning;
+    } else {
+        return {
+            text: "Maritime Assistant Ready:",
+            data: {
+                'Try': '"Whidbey Island ferry" or "weather conditions"'
+            }
+        };
+    }
+}
     
     // Static responses for other data
     if (lowerMessage.includes('port') || lowerMessage.includes('terminal')) {
